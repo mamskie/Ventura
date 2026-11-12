@@ -1,0 +1,82 @@
+name: Publish trend article
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: trend-blog-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate and publish one article if eligible
+        env:
+          TRENDS_RSS_URL: ${{ vars.TRENDS_RSS_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        id: generator
+        run: python scripts/publish.py
+
+      - name: Save generated article in GitHub
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish sourced trend article"
+            git push
+          fi
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload website artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy website
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Report new article on Telegram
+        if: steps.generator.outputs.published == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ARTICLE_TITLE: ${{ steps.generator.outputs.article_title }}
+          ARTICLE_URL: ${{ steps.generator.outputs.article_url }}
+        run: python scripts/notify_success.py
+
+      - name: Report workflow failure on Telegram
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/notify_failure.py
+
