@@ -21,11 +21,11 @@ In **Settings → Secrets and variables → Actions**, add these repository secr
 | `TELEGRAM_BOT_TOKEN` | Token from BotFather |
 | `TELEGRAM_CHAT_ID` | Chat ID where reports should arrive |
 
-Add these repository variables in the **Variables** tab:
+These repository variables are optional overrides in the **Variables** tab:
 
 | Variable | Value |
 | --- | --- |
-| `TRENDS_RSS_URL` | Google Trends Trending Now RSS URL filtered to United States |
+| `TRENDS_RSS_URL` | Optional RSS URL override. Defaults to the Google Trends US feed. |
 | `SITE_URL` | Optional override. Without it, the workflow uses `https://mamskie.github.io/Ventura` automatically. |
 | `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash` |
 
@@ -34,7 +34,7 @@ Never put API keys or bot tokens in repository files. To get the Telegram chat I
 ## Enable GitHub Pages
 
 1. Open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
-2. Add the `TRENDS_RSS_URL` variable and the three secrets above. `SITE_URL` is optional; `GEMINI_MODEL` can use its default.
+2. Add the three secrets above. Variables are optional; the workflow defaults to the US Trends feed, GitHub Pages URL, and `gemini-2.5-flash` model.
 3. Open **Actions → Publish trend article → Run workflow** for the first run.
 4. Check the Actions log and confirm the website deploys. Scheduled runs then happen every six hours (UTC).
 
