@@ -4,6 +4,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 */6 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "scripts/**"
+      - "requirements.txt"
+      - ".github/workflows/publish.yml"
 
 permissions:
   contents: write
@@ -16,6 +23,7 @@ concurrency:
 
 jobs:
   publish:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -24,14 +32,17 @@ jobs:
           persist-credentials: true
 
       - name: Set up Python
+        if: github.event_name != 'push'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: github.event_name != 'push'
         run: pip install -r requirements.txt
 
       - name: Generate and publish one article if eligible
+        if: github.event_name != 'push'
         env:
           TRENDS_RSS_URL: ${{ vars.TRENDS_RSS_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
