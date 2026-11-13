@@ -27,14 +27,13 @@ These repository variables are optional overrides in the **Variables** tab:
 | --- | --- |
 | `TRENDS_RSS_URL` | Optional RSS URL override. Defaults to the Google Trends US feed. |
 | `SITE_URL` | Optional override. Without it, the workflow uses `https://mamskie.github.io/Ventura` automatically. |
-| `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash` |
 
 Never put API keys or bot tokens in repository files. To get the Telegram chat ID, create the bot, open its chat, send `/start`, then inspect a recent update using the Bot API `getUpdates` endpoint. Do not paste the token into this repository or chat.
 
 ## Enable GitHub Pages
 
 1. Open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
-2. Add the three secrets above. Variables are optional; the workflow defaults to the US Trends feed, GitHub Pages URL, and `gemini-2.5-flash` model.
+2. Add the three secrets above. Variables are optional; the workflow defaults to the US Trends feed and GitHub Pages URL, and uses the `gemini-3.8-flash` model.
 3. Open **Actions → Publish trend article → Run workflow** for the first run.
 4. Check the Actions log and confirm the website deploys. Scheduled runs then happen every six hours (UTC).
 
