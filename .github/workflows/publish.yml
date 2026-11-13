@@ -35,17 +35,17 @@ jobs:
           persist-credentials: true
 
       - name: Set up Python
-        if: github.event_name != 'push' || contains(github.event.head_commit.message, '[publish-now]')
+        if: github.event_name != 'push'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
-        if: github.event_name != 'push' || contains(github.event.head_commit.message, '[publish-now]')
+        if: github.event_name != 'push'
         run: pip install -r requirements.txt
 
       - name: Generate and publish one article if eligible
-        if: github.event_name != 'push' || contains(github.event.head_commit.message, '[publish-now]')
+        if: github.event_name != 'push'
         env:
           TRENDS_RSS_URL: ${{ vars.TRENDS_RSS_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
