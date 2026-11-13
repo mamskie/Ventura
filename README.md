@@ -26,7 +26,7 @@ Add these repository variables in the **Variables** tab:
 | Variable | Value |
 | --- | --- |
 | `TRENDS_RSS_URL` | Google Trends Trending Now RSS URL filtered to United States |
-| `SITE_URL` | `https://mamskie.github.io/Ventura` (or the custom domain later) |
+| `SITE_URL` | Optional override. Without it, the workflow uses `https://mamskie.github.io/Ventura` automatically. |
 | `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash` |
 
 Never put API keys or bot tokens in repository files. To get the Telegram chat ID, create the bot, open its chat, send `/start`, then inspect a recent update using the Bot API `getUpdates` endpoint. Do not paste the token into this repository or chat.
@@ -34,7 +34,7 @@ Never put API keys or bot tokens in repository files. To get the Telegram chat I
 ## Enable GitHub Pages
 
 1. Open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
-2. Add the variables and secrets above.
+2. Add the `TRENDS_RSS_URL` variable and the three secrets above. `SITE_URL` is optional; `GEMINI_MODEL` can use its default.
 3. Open **Actions → Publish trend article → Run workflow** for the first run.
 4. Check the Actions log and confirm the website deploys. Scheduled runs then happen every six hours (UTC).
 
@@ -48,3 +48,4 @@ The site URL will be `https://mamskie.github.io/Ventura/` unless a custom domain
 - Automatic writing can still make mistakes. The keyword filter is a simple safeguard, not comprehensive editorial review.
 - Four posts per day is a maximum, not a target. It may publish fewer or none if trends lack suitable sources.
 - Monetization is not configured. Ad networks have their own review and traffic requirements.
+
