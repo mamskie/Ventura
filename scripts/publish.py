@@ -42,16 +42,23 @@ def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].lower()
 
 
-def request(url: str, data: bytes | None = None, headers: dict[str, str] | None = None) -> bytes:
+def request(url: str, data: bytes | None = None, headers: dict[str, str] | None = None, timeout: int = 25) -> bytes:
     req = urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=25) as response:
+    with urllib.request.urlopen(req, timeout=timeout) as response:
         return response.read()
 
 
 def request_with_retries(url: str, data: bytes, headers: dict[str, str], attempts: int = 4) -> bytes:
     for attempt in range(attempts):
         try:
-            return request(url, data, headers)
+            # Article generation can take longer than feed and source requests.
+            return request(url, data, headers, timeout=90)
+        except TimeoutError:
+            if attempt == attempts - 1:
+                raise
+            delay = 5 * (2 ** attempt)
+            print(f"Gemini request timed out; retrying in {delay}s (attempt {attempt + 2}/{attempts})")
+            time.sleep(delay)
         except urllib.error.HTTPError as error:
             if error.code not in {429, 500, 502, 503, 504} or attempt == attempts - 1:
                 raise
