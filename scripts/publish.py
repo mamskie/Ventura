@@ -19,7 +19,7 @@ import markdown
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 ARTICLES = SITE / "articles"
-RSS_URL = os.environ["TRENDS_RSS_URL"]
+RSS_URL = os.getenv("TRENDS_RSS_URL") or "https://trends.google.com/trending/rss?geo=US"
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
