@@ -184,6 +184,28 @@ def count_today() -> int:
     return sum(1 for p in article_files() if today in p.name)
 
 
+def is_near_duplicate(title: str, article_md: str) -> bool:
+    normalized_title = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+    new_words = re.findall(r"[a-z0-9]{3,}", article_md.lower())
+    new_shingles = set(zip(new_words, new_words[1:], new_words[2:], new_words[3:]))
+    for path in article_files():
+        old_html = path.read_text(encoding="utf-8")
+        title_match = re.search(r"<h1[^>]*>(.*?)</h1>", old_html, re.S)
+        old_title = html.unescape(re.sub(r"</?[^>]+>", "", title_match.group(1) if title_match else ""))
+        old_normalized = re.sub(r"[^a-z0-9]+", " ", old_title.lower()).strip()
+        if normalized_title and difflib.SequenceMatcher(None, normalized_title, old_normalized).ratio() >= 0.93:
+            return True
+        article_match = re.search(r"<article>(.*?)</article>", old_html, re.S)
+        old_text = html.unescape(re.sub(r"<[^>]+>", " ", article_match.group(1) if article_match else ""))
+        old_words = re.findall(r"[a-z0-9]{3,}", old_text.lower())
+        old_shingles = set(zip(old_words, old_words[1:], old_words[2:], old_words[3:]))
+        if len(new_shingles) >= 30 and len(old_shingles) >= 30:
+            similarity = len(new_shingles & old_shingles) / len(new_shingles | old_shingles)
+            if similarity >= 0.80:
+                return True
+    return False
+
+
 def article_description(article_md: str, topic: str) -> str:
     for line in article_md.splitlines():
         line = line.strip()
@@ -295,6 +317,12 @@ def main():
         if len(successful) < 2 or len(unique_domains) < 2:
             continue
         article = call_gemini(topic, successful)
+        title = next((line[2:].strip() for line in article.splitlines() if line.startswith("# ")), topic)
+        if is_near_duplicate(title, article):
+            print(f"Skipped near-duplicate article: {title}")
+            processed.add(key)
+            processed_path.write_text(json.dumps(sorted(processed), ensure_ascii=False, indent=2), encoding="utf-8")
+            continue
         published = dt.datetime.now(dt.timezone.utc)
         title, slug, page = render_article(topic, article, successful, published)
         out = ARTICLES / f"{slug}.html"
