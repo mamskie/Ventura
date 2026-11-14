@@ -33,11 +33,25 @@ Never put API keys or bot tokens in repository files. To get the Telegram chat I
 ## Enable GitHub Pages
 
 1. Open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
-2. Add the three secrets above. Variables are optional; the workflow defaults to the US Trends feed and GitHub Pages URL, and uses the `gemini-3.8-flash` model.
+2. Add the three secrets above. Variables are optional; the workflow defaults to the US Trends feed and GitHub Pages URL, and uses the `gemini-3.5-flash-lite` model.
 3. Open **Actions → Publish trend article → Run workflow** for the first run.
 4. Check the Actions log and confirm the website deploys. Scheduled runs then happen every six hours (UTC).
 
 The site URL will be `https://mamskie.github.io/Ventura/` unless a custom domain is connected. A custom domain is optional.
+
+## SEO setup
+
+The site publishes a sitemap at `https://mamskie.github.io/Ventura/sitemap.xml` and advertises it in `robots.txt`. New articles receive canonical URLs, Open Graph and Twitter metadata, and JSON-LD `Article` structured data. The homepage links to each published article.
+
+To register the current site with Google:
+
+1. Open [Google Search Console](https://search.google.com/search-console/).
+2. Add a **URL prefix** property for `https://mamskie.github.io/Ventura/`.
+3. Verify ownership using the HTML file method. Add Google's downloaded verification file to the repository's `site/` folder so it is deployed at the site root, then complete verification.
+4. In Search Console, open **Sitemaps**, enter `sitemap.xml`, and submit it.
+5. Use **URL Inspection** on the homepage and a recent article to request indexing and review any crawl issues.
+
+Sitemap submission helps Google discover URLs but does not guarantee indexing or search ranking. New pages can take time to be crawled. Search Console ownership verification must be completed by the site owner.
 
 ## Cost and editorial limits
 
