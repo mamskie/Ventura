@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://mamskie.github.io/Ventura/sitemap.xml
