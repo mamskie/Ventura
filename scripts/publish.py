@@ -334,6 +334,7 @@ def render_article(topic: str, article_md: str, sources: list[dict], published: 
     rendered = markdown.markdown(article_md + source_md, extensions=["extra", "sane_lists"])
     safe_html = bleach.clean(rendered, tags={"p", "h1", "h2", "h3", "ul", "ol", "li", "em", "strong", "blockquote", "a", "br", "code"}, attributes={"a": ["href", "title"]}, protocols={"http", "https"})
     published_iso = published.astimezone(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    read_minutes = max(1, round(len(article_md.split()) / 200))
     schema = {
         "@context": "https://schema.org",
         "@type": "Article",
@@ -367,13 +368,31 @@ def render_article(topic: str, article_md: str, sources: list[dict], published: 
     else:
         meta_image = '<meta name="twitter:card" content="summary">'
         hero = ""
-    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{safe_title} · Trend Desk</title><meta name="description" content="{safe_description}"><link rel="canonical" href="{safe_canonical}"><meta property="og:type" content="article"><meta property="og:site_name" content="Trend Desk"><meta property="og:title" content="{safe_title}"><meta property="og:description" content="{safe_description}"><meta property="og:url" content="{safe_canonical}"><meta property="article:published_time" content="{published_iso}">{meta_image}<meta name="twitter:title" content="{safe_title}"><meta name="twitter:description" content="{safe_description}"><script type="application/ld+json">{schema_json}</script><link rel="stylesheet" href="../editorial.css"></head><body><div class="topline"><span>AN INDEPENDENT TREND PUBLICATION</span><span>UNITED STATES</span></div><header class="site-header"><a class="wordmark" href="../index.html">TREND<span>DESK</span><b>.</b></a><nav aria-label="Main navigation"><a href="../index.html#latest">Latest stories</a><a href="../index.html#method">Our approach</a></nav><a class="header-link" href="https://trends.google.com/trending?geo=US">Explore the signal <span aria-hidden="true">↗</span></a></header><main class="article-main"><div class="article-shell"><a class="article-back" href="../index.html#latest">← ALL STORIES</a><p class="article-kicker">Published {published.strftime('%B %-d, %Y')} · Trending in the US</p>{hero}<article>{safe_html}</article></div></main><footer class="site-footer"><a class="wordmark" href="../index.html">TREND<span>DESK</span><b>.</b></a><p>Search interest is a signal of attention, not proof of fact.</p><a href="https://trends.google.com/trending?geo=US">Data signal: Google Trends ↗</a><small>© {published.year} Trend Desk</small></footer></body></html>"""
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{safe_title} · Trend Desk</title><meta name="description" content="{safe_description}"><link rel="canonical" href="{safe_canonical}"><meta property="og:type" content="article"><meta property="og:site_name" content="Trend Desk"><meta property="og:title" content="{safe_title}"><meta property="og:description" content="{safe_description}"><meta property="og:url" content="{safe_canonical}"><meta property="article:published_time" content="{published_iso}">{meta_image}<meta name="twitter:title" content="{safe_title}"><meta name="twitter:description" content="{safe_description}"><script type="application/ld+json">{schema_json}</script><link rel="stylesheet" href="../editorial.css"></head><body><div class="topline"><span>AN INDEPENDENT TREND PUBLICATION</span><span>UNITED STATES</span></div><header class="site-header"><a class="wordmark" href="../index.html">TREND<span>DESK</span><b>.</b></a><nav aria-label="Main navigation"><a href="../index.html#latest">Latest stories</a><a href="../index.html#method">Our approach</a></nav><a class="header-link" href="https://trends.google.com/trending?geo=US">Explore the signal <span aria-hidden="true">↗</span></a></header><main class="article-main"><div class="article-shell"><a class="article-back" href="../index.html#latest">← ALL STORIES</a><p class="article-kicker">Published {published.strftime('%B %-d, %Y')} · {read_minutes} min read · Trending in the US</p>{hero}<article>{safe_html}</article></div></main><footer class="site-footer"><a class="wordmark" href="../index.html">TREND<span>DESK</span><b>.</b></a><p>Search interest is a signal of attention, not proof of fact.</p><a href="https://trends.google.com/trending?geo=US">Data signal: Google Trends ↗</a><small>© {published.year} Trend Desk</small></footer></body></html>"""
     return title, slug, page
 
 
+COVER_THEMES = ["cover--green", "cover--orange", "cover--ink"]
+
+
+def cover_keyword(title: str) -> str:
+    word = re.sub(r"[^a-z0-9]+", "", title.split()[0].lower()) if title.split() else "trend"
+    return (word or "trend")[:12].upper()
+
+
+def story_visual(story: dict) -> str:
+    if story["image"]:
+        return f'<div class="story-illustration"><img src="{html.escape(story["image"], quote=True)}" alt=""></div>'
+    theme = COVER_THEMES[story["index"] % len(COVER_THEMES)]
+    return (
+        f'<div class="cover {theme}"><span class="cover-word">{html.escape(story["keyword"])}</span>'
+        f'<span class="cover-mark">TREND DESK ✳</span></div>'
+    )
+
+
 def rebuild_index():
-    cards = []
-    for path in article_files():
+    stories = []
+    for index, path in enumerate(article_files()):
         page = path.read_text(encoding="utf-8")
         article_match = re.search(r"<article>(.*?)</article>", page, re.S)
         heading_match = re.search(r"<h1[^>]*>(.*?)</h1>", article_match.group(1), re.S) if article_match else None
@@ -382,19 +401,74 @@ def rebuild_index():
         paragraph_match = re.search(r"<p[^>]*>(.*?)</p>", article_match.group(1), re.S) if article_match else None
         excerpt = re.sub(r"</?[^>]+>", "", paragraph_match.group(1) if paragraph_match else "A sourced briefing on a rising search topic.")
         excerpt = html.unescape(re.sub(r"\s+", " ", excerpt))[:180]
-        rel = "articles/" + path.name
-        date = path.name[:10]
         image_match = re.search(r'images/[A-Za-z0-9._-]+\.(?:jpg|jpeg|png|webp|gif)', page)
-        if image_match:
-            illustration = f'<div class="story-illustration"><img src="{html.escape(image_match.group(0), quote=True)}" alt=""></div>'
+        credit_match = re.search(r"<figcaption>Image: (.*?)</figcaption>", page)
+        date = path.name[:10]
+        try:
+            date_long = dt.date.fromisoformat(date).strftime("%B %-d, %Y")
+        except ValueError:
+            date_long = date
+        stories.append({
+            "index": index, "title": title, "excerpt": excerpt,
+            "rel": "articles/" + path.name, "date": date, "date_long": date_long,
+            "image": image_match.group(0) if image_match else None,
+            "credit": html.unescape(credit_match.group(1)) if credit_match else "",
+            "keyword": cover_keyword(title),
+        })
+    if not stories:
+        cards = ['<article class="story-card story-card-empty"><div class="cover cover--green"><span class="cover-word">COMING SOON</span><span class="cover-mark">TREND DESK ✳</span></div><div class="story-body"><div class="story-meta"><span>COMING INTO FOCUS</span><span>01 / —</span></div><h3>The first briefing is taking shape.</h3><p>When a rising search has enough reliable reporting behind it, its story will appear here.</p></div></article>']
+        hero = ""
+        stats = ""
+        ticker = ""
+    else:
+        # Feature the newest story that has a photo; fall back to the newest.
+        featured = next((s for s in stories if s["image"]), stories[0])
+        rest = [s for s in stories if s is not featured]
+        if featured["image"]:
+            credit = f"<figcaption>Image: {html.escape(featured['credit'])}</figcaption>" if featured["credit"] else ""
+            visual = (
+                f'<figure class="hero-visual"><span class="hero-badge">FEATURED <b>✳</b></span>'
+                f'<img src="{html.escape(featured["image"], quote=True)}" alt="{html.escape(featured["title"], quote=True)}">{credit}</figure>'
+            )
         else:
-            illustration = '<div class="story-illustration"><span class="illustration-word">READ<br>THE SIGNAL</span><span class="illustration-spark">✳</span></div>'
-        cards.append(f'<article class="story-card"><a class="story-link" href="{rel}">{illustration}<div class="story-meta"><span>US TREND BRIEFING</span><span>{date}</span></div><h3>{html.escape(title)}</h3><p>{html.escape(excerpt)}…</p><span class="text-link">Read the story <span aria-hidden="true">→</span></span></a></article>')
-    if not cards:
-        cards = ['<article class="story-card story-card-empty"><div class="story-illustration"><span class="illustration-word">FIRST<br>EDITION</span><span class="illustration-spark">✳</span></div><div class="story-meta"><span>COMING INTO FOCUS</span><span>01 / —</span></div><h3>The first briefing is taking shape.</h3><p>When a rising search has enough reliable reporting behind it, its story will appear here.</p></article>']
+            theme = COVER_THEMES[0]
+            visual = (
+                f'<div class="hero-visual"><span class="hero-badge">FEATURED <b>✳</b></span>'
+                f'<div class="cover {theme}"><span class="cover-word">{html.escape(featured["keyword"])}</span>'
+                f'<span class="cover-mark">TREND DESK ✳</span></div></div>'
+            )
+        hero = (
+            f'<section class="hero-feature"><div class="hero-copy"><p class="eyebrow"><span class="eyebrow-mark"></span>FEATURED · US TREND BRIEFING</p>'
+            f'<h1>{html.escape(featured["title"])}</h1><p class="hero-dek">{html.escape(featured["excerpt"])}…</p>'
+            f'<div class="hero-meta"><span>{featured["date_long"]}</span><span>Trending in the US</span></div>'
+            f'<div class="hero-actions"><a class="btn" href="{featured["rel"]}">Read the story →</a>'
+            f'<a class="btn-ghost" href="#latest">All stories ↓</a></div></div>{visual}</section>'
+        )
+        stats = (
+            f'<div class="stats-strip"><div class="stat"><b>{len(stories)}</b><span>stories published</span></div>'
+            f'<div class="stat"><b>6<i>h</i></b><span>fresh check cycle</span></div>'
+            f'<div class="stat"><b>2<i>+</i></b><span>sources behind every story</span></div></div>'
+        )
+        ticker_items = "".join(
+            f'<span class="ticker-item">{html.escape(s["title"])}<i>✳</i></span>' for s in stories[:8]
+        )
+        ticker = (
+            f'<div class="ticker"><div class="ticker-inner"><span class="ticker-label">TRENDING NOW</span>'
+            f'<div class="ticker-viewport"><div class="ticker-track">{ticker_items}{ticker_items}</div></div></div></div>'
+        )
+        cards = []
+        for story in rest:
+            visual = story_visual(story)
+            featured_class = " story-card--featured" if story is rest[0] else ""
+            cards.append(
+                f'<article class="story-card{featured_class}"><a class="story-link" href="{story["rel"]}">{visual}'
+                f'<div class="story-body"><div class="story-meta"><span>US TREND BRIEFING</span><span>{story["date"]}</span></div>'
+                f'<h3>{html.escape(story["title"])}</h3><p>{html.escape(story["excerpt"])}…</p>'
+                f'<span class="text-link">Read the story <span aria-hidden="true">→</span></span></div></a></article>'
+            )
     cards.append('<article class="principle-card"><p class="eyebrow">OUR PROMISE</p><div class="principle-number">01</div><h3>Signal is not the story.</h3><p>Search trends show what people are curious about. We look for credible reporting to explain what is known and what still needs context.</p><a class="text-link" href="#method">How we work <span aria-hidden="true">↓</span></a></article>')
     listing = "\n".join(cards)
-    (SITE / "index.html").write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Independent, source-led briefings on the topics capturing attention across the United States."><link rel="canonical" href="{html.escape(SITE_URL + '/', quote=True)}"><meta property="og:type" content="website"><meta property="og:site_name" content="Trend Desk"><meta property="og:title" content="Trend Desk — The stories behind the search"><meta property="og:description" content="Independent, source-led briefings on the topics capturing attention across the United States."><meta property="og:url" content="{html.escape(SITE_URL + '/', quote=True)}"><meta name="twitter:card" content="summary"><meta name="twitter:title" content="Trend Desk — The stories behind the search"><meta name="twitter:description" content="Independent, source-led briefings on the topics capturing attention across the United States."><meta name="theme-color" content="#f6f4ee"><title>Trend Desk — The stories behind the search</title><link rel="stylesheet" href="editorial.css"></head><body><div class="topline"><span>AN INDEPENDENT TREND PUBLICATION</span><span>ISSUE 001 <i aria-hidden="true">·</i> UNITED STATES</span></div><header class="site-header"><a class="wordmark" href="index.html" aria-label="Trend Desk home">TREND<span>DESK</span><b>.</b></a><nav aria-label="Main navigation"><a href="#latest">Latest stories</a><a href="#method">Our approach</a></nav><a class="header-link" href="https://trends.google.com/trending?geo=US">Explore the signal <span aria-hidden="true">↗</span></a></header><main><section class="hero"><div class="hero-copy"><p class="eyebrow"><span class="eyebrow-mark"></span> SEARCH, PUT INTO CONTEXT</p><h1>The stories<br>behind the <em>search.</em></h1><p class="hero-intro">A thoughtful read on what’s capturing attention across America — built from search signals, trusted reporting and useful context.</p><a class="text-link" href="#latest">Read the latest <span aria-hidden="true">↓</span></a></div><aside class="hero-art" aria-label="Trend Desk editorial principles"><div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div><div class="art-sun"></div><div class="art-label label-top">A SIGNAL IS A STARTING POINT</div><div class="art-label label-bottom">CURIOSITY, WITH CONTEXT</div><span class="art-index">TD—01</span></aside><div class="hero-bottom"><span>CURIOUS BY DESIGN</span><span>GROUNDED IN SOURCES <b>✳</b></span></div></section><section class="latest-section" id="latest"><div class="section-heading"><div><p class="eyebrow">THE EDITION</p><h2>Latest stories</h2></div><span class="section-note">Fresh topics, thoughtfully explained.</span></div><div class="story-grid">{listing}</div></section><section class="method-section" id="method"><div class="method-title"><p class="eyebrow">A BETTER WAY TO FOLLOW THE MOMENT</p><h2>Curiosity deserves<br>good reporting.</h2></div><div class="method-steps"><div><span>01</span><h3>Notice</h3><p>We watch for searches rising across the United States.</p></div><div><span>02</span><h3>Understand</h3><p>We look for reporting from multiple sources before writing.</p></div><div><span>03</span><h3>Explain</h3><p>We connect the signal to what sources can actually support.</p></div></div></section></main><footer class="site-footer"><a class="wordmark" href="index.html">TREND<span>DESK</span><b>.</b></a><p>Search interest is a signal of attention, not proof of fact.</p><a href="https://trends.google.com/trending?geo=US">Data signal: Google Trends ↗</a><small>© 2026 Trend Desk</small></footer></body></html>""", encoding="utf-8")
+    (SITE / "index.html").write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Independent, source-led briefings on the topics capturing attention across the United States."><link rel="canonical" href="{html.escape(SITE_URL + '/', quote=True)}"><meta property="og:type" content="website"><meta property="og:site_name" content="Trend Desk"><meta property="og:title" content="Trend Desk — The stories behind the search"><meta property="og:description" content="Independent, source-led briefings on the topics capturing attention across the United States."><meta property="og:url" content="{html.escape(SITE_URL + '/', quote=True)}"><meta name="twitter:card" content="summary"><meta name="twitter:title" content="Trend Desk — The stories behind the search"><meta name="twitter:description" content="Independent, source-led briefings on the topics capturing attention across the United States."><meta name="theme-color" content="#f6f4ee"><title>Trend Desk — The stories behind the search</title><link rel="stylesheet" href="editorial.css"></head><body>{ticker}<div class="topline"><span>AN INDEPENDENT TREND PUBLICATION</span><span>ISSUE 001 <i aria-hidden="true">·</i> UNITED STATES</span></div><header class="site-header"><a class="wordmark" href="index.html" aria-label="Trend Desk home">TREND<span>DESK</span><b>.</b></a><nav aria-label="Main navigation"><a href="#latest">Latest stories</a><a href="#method">Our approach</a></nav><a class="header-link" href="https://trends.google.com/trending?geo=US">Explore the signal <span aria-hidden="true">↗</span></a></header><main>{hero}{stats}<section class="latest-section" id="latest"><div class="section-heading"><div><p class="eyebrow">THE EDITION</p><h2>Latest stories</h2></div><span class="section-note">Fresh topics, thoughtfully explained.</span></div><div class="story-grid">{listing}</div></section><section class="method-section" id="method"><div class="method-title"><p class="eyebrow">A BETTER WAY TO FOLLOW THE MOMENT</p><h2>Curiosity deserves<br>good reporting.</h2></div><div class="method-steps"><div><span>01</span><h3>Notice</h3><p>We watch for searches rising across the United States.</p></div><div><span>02</span><h3>Understand</h3><p>We look for reporting from multiple sources before writing.</p></div><div><span>03</span><h3>Explain</h3><p>We connect the signal to what sources can actually support.</p></div></div></section></main><footer class="site-footer"><a class="wordmark" href="index.html">TREND<span>DESK</span><b>.</b></a><p>Search interest is a signal of attention, not proof of fact.</p><a href="https://trends.google.com/trending?geo=US">Data signal: Google Trends ↗</a><small>© 2026 Trend Desk</small></footer></body></html>""", encoding="utf-8")
 
 
     write_sitemap()
