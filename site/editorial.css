@@ -10,3 +10,9 @@
 @media(max-width:420px){nav a:last-child{display:none}.topline span:last-child{letter-spacing:.08em}.method-steps{grid-template-columns:1fr}.method-steps>div{padding:12px 0 5px}.method-steps h3{margin:8px 0 3px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 
+/* Source thumbnails (og:image from cited reporting) */
+.story-illustration img{width:100%;height:100%;object-fit:cover;display:block}
+.article-hero{margin:0 0 28px}
+.article-hero img{width:100%;height:auto;display:block;border-radius:4px}
+.article-hero figcaption{margin-top:8px;color:var(--muted);font-size:11px}
+
