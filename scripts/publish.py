@@ -21,6 +21,15 @@ import markdown
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 ARTICLES = SITE / "articles"
+IMAGES = SITE / "images"
+MAX_IMAGE_BYTES = 5_000_000
+MIN_IMAGE_BYTES = 2_048
+IMAGE_CONTENT_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
 RSS_URL = os.getenv("TRENDS_RSS_URL") or "https://trends.google.com/trending/rss?geo=US"
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -138,16 +147,93 @@ class TextExtractor(HTMLParser):
             self.current.append(data)
 
 
+def extract_og_image(page_html: str, base_url: str) -> str | None:
+    """Return the source article's og:image (or twitter:image) URL, if any.
+
+    Only absolute http(s) URLs are accepted; data: URIs and SVGs are
+    rejected. Relative URLs are resolved against the article URL.
+    """
+    for prop in ("og:image:secure_url", "og:image", "twitter:image"):
+        match = re.search(
+            rf'<meta[^>]+(?:property|name)=["\']{re.escape(prop)}["\'][^>]+content=["\']([^"\']+)["\']',
+            page_html,
+            re.I,
+        ) or re.search(
+            rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']{re.escape(prop)}["\']',
+            page_html,
+            re.I,
+        )
+        if not match:
+            continue
+        url = urllib.parse.urljoin(base_url, html.unescape(match.group(1)).strip())
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+        if parsed.path.lower().endswith(".svg"):
+            continue
+        return url
+    return None
+
+
+def download_image(url: str) -> tuple[bytes, str] | None:
+    """Download an image, validating type and size. Returns (data, ext)."""
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=20) as response:
+        content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        ext = IMAGE_CONTENT_TYPES.get(content_type)
+        if ext is None:
+            print(f"Skipped non-image content at {url} ({content_type})")
+            return None
+        data = response.read(MAX_IMAGE_BYTES + 1)
+    if len(data) < MIN_IMAGE_BYTES:
+        print(f"Skipped suspiciously small image at {url} ({len(data)} bytes)")
+        return None
+    if len(data) > MAX_IMAGE_BYTES:
+        print(f"Skipped oversized image at {url} ({len(data)} bytes)")
+        return None
+    return data, ext
+
+
+def pick_source_image(sources: list[dict], slug: str) -> dict | None:
+    """Download the first usable og:image from the sources.
+
+    The image is saved under site/images/<slug>.<ext> so the article
+    self-hosts its thumbnail. Any failure just means no image for this
+    article — it never fails the run.
+    """
+    for source in sources:
+        url = source.get("image_url")
+        if not url:
+            continue
+        try:
+            downloaded = download_image(url)
+        except Exception as exc:  # noqa: BLE001 - image is best-effort
+            print(f"Could not download source image {url}: {exc}")
+            continue
+        if downloaded is None:
+            continue
+        data, ext = downloaded
+        IMAGES.mkdir(parents=True, exist_ok=True)
+        rel = f"images/{slug}{ext}"
+        (IMAGES / f"{slug}{ext}").write_bytes(data)
+        print(f"Using source image: {url} -> {rel}")
+        return {"rel": rel, "credit": source.get("publisher") or source.get("title") or "Source"}
+    return None
+
+
 def get_source_text(source: dict) -> str:
     try:
         raw = request(source["url"])
+        page_html = raw.decode("utf-8", errors="ignore")
+        source["image_url"] = extract_og_image(page_html, source["url"])
         parser = TextExtractor()
-        parser.feed(raw.decode("utf-8", errors="ignore"))
+        parser.feed(page_html)
         text = "\n".join(parser.paragraphs[:12])
         source["excerpt"] = text[:6000]
         return text
     except (urllib.error.URLError, TimeoutError, ValueError):
         source["excerpt"] = ""
+        source["image_url"] = None
         return ""
 
 
@@ -236,11 +322,12 @@ def article_description(article_md: str, topic: str) -> str:
     return f"A sourced briefing explaining what reliable reporting says about {topic}."
 
 
-def render_article(topic: str, article_md: str, sources: list[dict], published: dt.datetime) -> tuple[str, str, str]:
+def render_article(topic: str, article_md: str, sources: list[dict], published: dt.datetime, image: dict | None = None) -> tuple[str, str, str]:
     title = next((line[2:].strip() for line in article_md.splitlines() if line.startswith("# ")), topic)
     description = article_description(article_md, topic)
     slug = f"{published.strftime('%Y-%m-%d')}-{slugify(title)}"
     canonical = f"{SITE_URL}/articles/{slug}.html"
+    image_url = f"{SITE_URL}/{image['rel']}" if image else None
     source_md = "\n\n## Sources\n" + "\n".join(
         f"- [{s.get('title') or s.get('publisher') or 'Source'}]({s['url']})" for s in sources
     )
@@ -259,11 +346,28 @@ def render_article(topic: str, article_md: str, sources: list[dict], published: 
         "mainEntityOfPage": {"@type": "WebPage", "@id": canonical},
         "citation": [s["url"] for s in sources],
     }
+    if image_url:
+        schema["image"] = [image_url]
     schema_json = json.dumps(schema, ensure_ascii=False).replace("<", "\\u003c")
     safe_title = html.escape(title, quote=True)
     safe_description = html.escape(description, quote=True)
     safe_canonical = html.escape(canonical, quote=True)
-    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{safe_title} · Trend Desk</title><meta name="description" content="{safe_description}"><link rel="canonical" href="{safe_canonical}"><meta property="og:type" content="article"><meta property="og:site_name" content="Trend Desk"><meta property="og:title" content="{safe_title}"><meta property="og:description" content="{safe_description}"><meta property="og:url" content="{safe_canonical}"><meta property="article:published_time" content="{published_iso}"><meta name="twitter:card" content="summary"><meta name="twitter:title" content="{safe_title}"><meta name="twitter:description" content="{safe_description}"><script type="application/ld+json">{schema_json}</script><link rel="stylesheet" href="../editorial.css"></head><body><div class="topline"><span>AN INDEPENDENT TREND PUBLICATION</span><span>UNITED STATES</span></div><header class="site-header"><a class="wordmark" href="../index.html">TREND<span>DESK</span><b>.</b></a><nav aria-label="Main navigation"><a href="../index.html#latest">Latest stories</a><a href="../index.html#method">Our approach</a></nav><a class="header-link" href="https://trends.google.com/trending?geo=US">Explore the signal <span aria-hidden="true">↗</span></a></header><main class="article-main"><div class="article-shell"><a class="article-back" href="../index.html#latest">← ALL STORIES</a><p class="article-kicker">Published {published.strftime('%B %-d, %Y')} · Trending in the US</p><article>{safe_html}</article></div></main><footer class="site-footer"><a class="wordmark" href="../index.html">TREND<span>DESK</span><b>.</b></a><p>Search interest is a signal of attention, not proof of fact.</p><a href="https://trends.google.com/trending?geo=US">Data signal: Google Trends ↗</a><small>© {published.year} Trend Desk</small></footer></body></html>"""
+    if image:
+        safe_image_url = html.escape(image_url, quote=True)
+        safe_credit = html.escape(image["credit"], quote=True)
+        meta_image = (
+            f'<meta property="og:image" content="{safe_image_url}">'
+            f'<meta name="twitter:card" content="summary_large_image">'
+            f'<meta name="twitter:image" content="{safe_image_url}">'
+        )
+        hero = (
+            f'<figure class="article-hero"><img src="../{html.escape(image["rel"], quote=True)}" alt="{safe_title}">'
+            f"<figcaption>Image: {safe_credit}</figcaption></figure>"
+        )
+    else:
+        meta_image = '<meta name="twitter:card" content="summary">'
+        hero = ""
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{safe_title} · Trend Desk</title><meta name="description" content="{safe_description}"><link rel="canonical" href="{safe_canonical}"><meta property="og:type" content="article"><meta property="og:site_name" content="Trend Desk"><meta property="og:title" content="{safe_title}"><meta property="og:description" content="{safe_description}"><meta property="og:url" content="{safe_canonical}"><meta property="article:published_time" content="{published_iso}">{meta_image}<meta name="twitter:title" content="{safe_title}"><meta name="twitter:description" content="{safe_description}"><script type="application/ld+json">{schema_json}</script><link rel="stylesheet" href="../editorial.css"></head><body><div class="topline"><span>AN INDEPENDENT TREND PUBLICATION</span><span>UNITED STATES</span></div><header class="site-header"><a class="wordmark" href="../index.html">TREND<span>DESK</span><b>.</b></a><nav aria-label="Main navigation"><a href="../index.html#latest">Latest stories</a><a href="../index.html#method">Our approach</a></nav><a class="header-link" href="https://trends.google.com/trending?geo=US">Explore the signal <span aria-hidden="true">↗</span></a></header><main class="article-main"><div class="article-shell"><a class="article-back" href="../index.html#latest">← ALL STORIES</a><p class="article-kicker">Published {published.strftime('%B %-d, %Y')} · Trending in the US</p>{hero}<article>{safe_html}</article></div></main><footer class="site-footer"><a class="wordmark" href="../index.html">TREND<span>DESK</span><b>.</b></a><p>Search interest is a signal of attention, not proof of fact.</p><a href="https://trends.google.com/trending?geo=US">Data signal: Google Trends ↗</a><small>© {published.year} Trend Desk</small></footer></body></html>"""
     return title, slug, page
 
 
@@ -280,7 +384,12 @@ def rebuild_index():
         excerpt = html.unescape(re.sub(r"\s+", " ", excerpt))[:180]
         rel = "articles/" + path.name
         date = path.name[:10]
-        cards.append(f'<article class="story-card"><a class="story-link" href="{rel}"><div class="story-illustration"><span class="illustration-word">READ<br>THE SIGNAL</span><span class="illustration-spark">✳</span></div><div class="story-meta"><span>US TREND BRIEFING</span><span>{date}</span></div><h3>{html.escape(title)}</h3><p>{html.escape(excerpt)}…</p><span class="text-link">Read the story <span aria-hidden="true">→</span></span></a></article>')
+        image_match = re.search(r'images/[A-Za-z0-9._-]+\.(?:jpg|jpeg|png|webp|gif)', page)
+        if image_match:
+            illustration = f'<div class="story-illustration"><img src="{html.escape(image_match.group(0), quote=True)}" alt=""></div>'
+        else:
+            illustration = '<div class="story-illustration"><span class="illustration-word">READ<br>THE SIGNAL</span><span class="illustration-spark">✳</span></div>'
+        cards.append(f'<article class="story-card"><a class="story-link" href="{rel}">{illustration}<div class="story-meta"><span>US TREND BRIEFING</span><span>{date}</span></div><h3>{html.escape(title)}</h3><p>{html.escape(excerpt)}…</p><span class="text-link">Read the story <span aria-hidden="true">→</span></span></a></article>')
     if not cards:
         cards = ['<article class="story-card story-card-empty"><div class="story-illustration"><span class="illustration-word">FIRST<br>EDITION</span><span class="illustration-spark">✳</span></div><div class="story-meta"><span>COMING INTO FOCUS</span><span>01 / —</span></div><h3>The first briefing is taking shape.</h3><p>When a rising search has enough reliable reporting behind it, its story will appear here.</p></article>']
     cards.append('<article class="principle-card"><p class="eyebrow">OUR PROMISE</p><div class="principle-number">01</div><h3>Signal is not the story.</h3><p>Search trends show what people are curious about. We look for credible reporting to explain what is known and what still needs context.</p><a class="text-link" href="#method">How we work <span aria-hidden="true">↓</span></a></article>')
@@ -345,7 +454,9 @@ def main():
             processed_path.write_text(json.dumps(sorted(processed), ensure_ascii=False, indent=2), encoding="utf-8")
             continue
         published = dt.datetime.now(dt.timezone.utc)
-        title, slug, page = render_article(topic, article, successful, published)
+        slug = f"{published.strftime('%Y-%m-%d')}-{slugify(title)}"
+        image = pick_source_image(successful, slug)
+        title, slug, page = render_article(topic, article, successful, published, image=image)
         out = ARTICLES / f"{slug}.html"
         if out.exists():
             continue
