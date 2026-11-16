@@ -154,3 +154,20 @@ nav{display:flex;gap:32px}nav a,.header-link{font-size:12px;text-decoration:none
 }
 @media(max-width:420px){nav a:last-child{display:none}.topline span:last-child{letter-spacing:.08em}.method-steps>div{padding:12px 0 5px}.method-steps h3{margin:8px 0 3px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.ticker-track{animation:none}.hero-feature{animation:none}}
+
+/* Seasonal themes + share buttons (see site/seasons.js) */
+.season-ribbon{background:#14532d;color:#fde68a;text-align:center;font:700 12px/1.5 var(--sans),Arial,sans-serif;letter-spacing:.14em;text-transform:uppercase;padding:9px 14px}
+.season-ribbon b{color:#fff}
+body.season-christmas{--green:#14532d;--orange:#b91c1c}
+body.season-christmas .ticker{background:#14532d}
+body.season-newyear .ticker{background:#1e3a5f}
+body.season-newyear .ticker-label{background:#c9a227;color:#111}
+body.season-newyear .season-ribbon{background:#1e3a5f;color:#fde68a}
+body.season-newyear .hero-badge b{color:#c9a227}
+.share-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px}
+.share-row>span{font:700 11px var(--sans),Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.share-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:7px 13px;background:#fff;color:var(--ink);font:600 13px var(--sans),Arial,sans-serif;text-decoration:none;cursor:pointer}
+.share-btn:hover{border-color:var(--ink)}
+.card-share{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.card-share .share-btn{padding:5px 11px;font-size:12px}
+@media(max-width:760px){.season-ribbon{font-size:10px;letter-spacing:.08em}}
