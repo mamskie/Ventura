@@ -256,10 +256,10 @@ class OpenverseTests(unittest.TestCase):
 
 
 class TopicModeTests(unittest.TestCase):
-    def test_search_news_parses_rss(self):
-        rss = b"""<?xml version="1.0"?><rss version="2.0"><channel>
-        <item><title>Team Wins Big</title><link>https://news.google.com/rss/articles/abc</link><source url="https://example.com">Example News</source></item>
-        <item><title>Second Story</title><link>https://example.com/direct</link><source url="https://other.com">Other News</source></item>
+    def test_search_news_parses_bing_rss(self):
+        rss = b"""<?xml version="1.0"?><rss version="2.0" xmlns:News="https://www.bing.com/news/search"><channel>
+        <item><title>Team Wins Big</title><link>https://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;url=https%3a%2f%2fexample.com%2fteam-wins&amp;mkt=en-us</link><News:Source>Example News</News:Source></item>
+        <item><title>Second Story</title><link>https://other.com/direct</link><News:Source>Other News</News:Source></item>
         </channel></rss>"""
         with (
             patch.object(publish, "request", return_value=rss),
@@ -268,8 +268,34 @@ class TopicModeTests(unittest.TestCase):
             items = publish.search_news("team wins")
         self.assertEqual(len(items), 2)
         self.assertEqual(items[0]["title"], "Team Wins Big")
+        # The apiclick url= parameter decodes to the direct publisher URL.
+        self.assertEqual(items[0]["url"], "https://example.com/team-wins")
         self.assertEqual(items[0]["publisher"], "Example News")
-        self.assertEqual(items[1]["url"], "https://example.com/direct")
+        self.assertEqual(items[1]["url"], "https://other.com/direct")
+
+    def test_search_news_apiclick_without_url_param_falls_back_to_resolve(self):
+        rss = b"""<?xml version="1.0"?><rss version="2.0"><channel>
+        <item><title>Team Wins Big</title><link>https://www.bing.com/news/apiclick.aspx?ref=FexRss</link><source>Example News</source></item>
+        </channel></rss>"""
+        with (
+            patch.object(publish, "request", return_value=rss),
+            patch.object(publish, "resolve_url", return_value="https://example.com/resolved"),
+        ):
+            items = publish.search_news("team wins")
+        self.assertEqual(items[0]["url"], "https://example.com/resolved")
+
+    def test_direct_url_from_apiclick(self):
+        self.assertEqual(
+            publish.direct_url_from_apiclick(
+                "https://www.bing.com/news/apiclick.aspx?url=https%3a%2f%2fexample.com%2fa&mkt=en-us"
+            ),
+            "https://example.com/a",
+        )
+        self.assertEqual(publish.direct_url_from_apiclick("https://example.com/a"), "")
+        self.assertEqual(
+            publish.direct_url_from_apiclick("https://www.bing.com/news/apiclick.aspx?ref=FexRss"),
+            "",
+        )
 
     def test_publish_topic_requires_two_sources(self):
         with patch.object(publish, "search_news", return_value=[{"title": "Only One"}]):

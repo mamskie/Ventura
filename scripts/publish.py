@@ -657,17 +657,35 @@ def resolve_url(url: str) -> str:
         return url
 
 
-def search_news(topic: str) -> list[dict]:
-    """Search Google News RSS for a user-supplied topic.
+def direct_url_from_apiclick(link: str) -> str:
+    """Extract the publisher URL from a Bing apiclick redirect link.
 
-    Returns [{title, url, publisher}] with the real article URL
-    (Google News links redirect to the publisher). Empty on failure.
+    Bing News RSS <link> values point at apiclick.aspx with the real
+    article URL in the url= query parameter. Returns "" when the link
+    is not an apiclick URL or carries no url= parameter.
     """
-    params = urllib.parse.urlencode({"q": topic, "hl": "en-US", "gl": "US", "ceid": "US:en"})
+    parsed = urllib.parse.urlparse(link)
+    if "apiclick.aspx" not in parsed.path:
+        return ""
+    return dict(urllib.parse.parse_qsl(parsed.query)).get("url", "")
+
+
+def search_news(topic: str) -> list[dict]:
+    """Search Bing News RSS for a user-supplied topic.
+
+    Returns [{title, url, publisher}] with the direct publisher URL.
+    Empty on failure.
+
+    Google News RSS was used first, but its rss/articles links return
+    HTTP 400 to plain HTTP clients, so resolve_url() could never reach
+    the publisher and topic mode always failed with "not enough usable
+    sources". Bing links carry the publisher URL directly.
+    """
+    params = urllib.parse.urlencode({"q": topic, "format": "rss", "mkt": "en-us"})
     try:
-        root = ET.fromstring(request(f"https://news.google.com/rss/search?{params}"))
+        root = ET.fromstring(request(f"https://www.bing.com/news/search?{params}"))
     except Exception as exc:  # noqa: BLE001 - caller decides what to do
-        print(f"Google News search failed for {topic!r}: {exc}")
+        print(f"Bing News search failed for {topic!r}: {exc}")
         return []
     items = []
     for item in root.iter():
@@ -678,7 +696,8 @@ def search_news(topic: str) -> list[dict]:
         title = fields.get("title", "")
         if not link or not title:
             continue
-        items.append({"title": title, "url": resolve_url(link), "publisher": fields.get("source", "")})
+        url = direct_url_from_apiclick(link) or resolve_url(link)
+        items.append({"title": title, "url": url, "publisher": fields.get("source", "")})
     return items
 
 
@@ -696,6 +715,8 @@ def try_publish(topic: str, sources: list[dict], processed: set, processed_path:
     successful = [s for s in sources if len(get_source_text(s)) >= 400]
     unique_domains = {urllib.parse.urlparse(s["url"]).netloc.lower().removeprefix("www.") for s in successful}
     if len(successful) < 2 or len(unique_domains) < 2:
+        print(f"Only {len(successful)}/{len(sources)} usable sources "
+              f"({len(unique_domains)} domains) for {topic!r}")
         return False
     article = call_gemini(topic, successful)
     if article is None:
