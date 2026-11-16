@@ -1,3 +1,4 @@
+# NOTE: re-registering the schedule 2026-11-16 — the */10 cron never fired a run since this file was merged, so this touch forces GitHub to re-register it.
 name: Check Telegram topics
 
 on:
