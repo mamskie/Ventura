@@ -2,6 +2,12 @@ name: Publish trend article
 
 on:
   workflow_dispatch:
+    inputs:
+      topic:
+        description: "Optional topic for an on-demand article (leave empty for the scheduled Trends run)"
+        required: false
+        default: ""
+        type: string
   schedule:
     - cron: "17 */6 * * *"
   push:
@@ -48,6 +54,7 @@ jobs:
         if: github.event_name != 'push'
         env:
           TRENDS_RSS_URL: ${{ vars.TRENDS_RSS_URL }}
+          TOPIC: ${{ inputs.topic }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
