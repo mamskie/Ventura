@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   publish:
-if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
