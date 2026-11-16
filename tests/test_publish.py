@@ -96,20 +96,28 @@ class ChunkedGenerationTests(unittest.TestCase):
         self.assertIsNone(article)
 
     def test_whole_article_validation_rejects_short_total(self):
-        # Each part passes the per-part minimum (250) but the total is
-        # under 900 words, so the combined article must be rejected.
-        with patch.object(publish, "gemini_generate", side_effect=self.fake_gemini(300, 280, 260)):
+        # Each part passes the per-part minimum (150) but the total is
+        # under 800 words, so the combined article must be rejected.
+        with patch.object(publish, "gemini_generate", side_effect=self.fake_gemini(260, 260, 240)):
             article = publish.call_gemini("Test Topic", self.sources)
         self.assertIsNone(article)
 
-    def test_whole_article_validation_accepts_just_above_900(self):
-        # Mirrors run #58: parts total ~970 words (13 paragraphs,
-        # starts with title). The old 1000-word floor rejected it;
-        # the 900-word floor accepts it.
-        with patch.object(publish, "gemini_generate", side_effect=self.fake_gemini(330, 320, 310)):
+    def test_whole_article_validation_accepts_just_above_800(self):
+        # Total ~840 words: above the 800-word floor, below the old
+        # 900-word floor that rejected run #58's 973-word article.
+        with patch.object(publish, "gemini_generate", side_effect=self.fake_gemini(290, 280, 260)):
             article = publish.call_gemini("Test Topic", self.sources)
         self.assertIsNotNone(article)
-        self.assertGreaterEqual(len(article.split()), 900)
+        self.assertGreaterEqual(len(article.split()), 800)
+
+    def test_short_closing_part_still_passes(self):
+        # Mirrors run #60: the closing part lands at ~165 words
+        # (below the old 250-word per-part minimum) but the combined
+        # article is ~830 words, so it must be accepted now.
+        with patch.object(publish, "gemini_generate", side_effect=self.fake_gemini(330, 330, 165)):
+            article = publish.call_gemini("Test Topic", self.sources)
+        self.assertIsNotNone(article)
+        self.assertGreaterEqual(len(article.split()), 800)
 
     def test_part1_must_start_with_title(self):
         def _generate(prompt):
