@@ -442,7 +442,12 @@ def slugify(text: str) -> str:
 
 
 def article_files() -> list[Path]:
-    return sorted(ARTICLES.glob("*.html"), reverse=True)
+    def sort_key(path: Path):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        match = re.search(r'article:published_time" content="([^"]+)"', text)
+        return (match.group(1) if match else "", path.name)
+
+    return sorted(ARTICLES.glob("*.html"), key=sort_key, reverse=True)
 
 
 def count_today() -> int:
