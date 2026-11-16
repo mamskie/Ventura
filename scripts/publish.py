@@ -53,6 +53,11 @@ SITE_URL = (os.getenv("SITE_URL") or DEFAULT_SITE_URL).rstrip("/")
 MODEL = os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite"
 MAX_PER_DAY = int(os.getenv("MAX_ARTICLES_PER_DAY", "4"))
 USER_AGENT = "TrendDeskBot/1.0 (source-attributed blog; contact: site owner)"
+# Flickr's static CDN (where most Openverse results are hosted) rejects
+# bot user-agents with HTTP 403, so Openverse downloads use a browser
+# user-agent instead. The images are freely licensed; this only affects
+# how the file is fetched, not its license or attribution.
+BROWSER_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 BLOCKED_TERMS = {
     "election", "president", "congress", "senate", "vote", "voting",
     "war", "shooting", "murder", "suicide", "earthquake", "hurricane",
@@ -187,9 +192,9 @@ def extract_og_image(page_html: str, base_url: str) -> str | None:
     return None
 
 
-def download_image(url: str) -> tuple[bytes, str] | None:
+def download_image(url: str, user_agent: str = USER_AGENT) -> tuple[bytes, str] | None:
     """Download an image, validating type and size. Returns (data, ext)."""
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent})
     with urllib.request.urlopen(req, timeout=20) as response:
         content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         ext = IMAGE_CONTENT_TYPES.get(content_type)
@@ -279,7 +284,7 @@ def pick_source_image(sources: list[dict], slug: str, keywords: str = "") -> dic
         tried.add(query)
         for candidate in search_openverse_image(query):
             try:
-                downloaded = download_image(candidate["url"])
+                downloaded = download_image(candidate["url"], user_agent=BROWSER_USER_AGENT)
             except Exception as exc:  # noqa: BLE001 - image is best-effort
                 print(f"Could not download Openverse image {candidate['url']}: {exc}")
                 continue

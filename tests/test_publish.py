@@ -168,7 +168,7 @@ class OpenverseTests(unittest.TestCase):
         sources = [{"url": "https://example.com/a", "image_url": "https://example.com/og.jpg", "publisher": "Pub"}]
         candidates = [{"url": "https://live.staticflickr.com/1/img_b.jpg", "creator": ""}]
 
-        def _download(url):
+        def _download(url, user_agent=None):
             return None if "og.jpg" in url else (b"x" * 5000, ".png")
 
         with (
@@ -209,6 +209,31 @@ class OpenverseTests(unittest.TestCase):
             ["kenneth walker football star", "kenneth walker football", "kenneth walker"],
         )
         self.assertEqual(image["credit"], "Ann via Openverse")
+
+    def test_openverse_download_uses_browser_ua(self):
+        # Flickr's CDN 403s bot user-agents; Openverse downloads must
+        # use a browser UA, while og:image downloads keep the bot UA.
+        sources = [{"url": "https://example.com/a"}]
+        candidates = [{"url": "https://live.staticflickr.com/1/img_b.jpg", "creator": "Jane"}]
+        with (
+            patch.object(publish, "download_image", return_value=(b"x" * 5000, ".jpg")) as mock_dl,
+            patch.object(publish, "search_openverse_image", return_value=candidates),
+            patch.object(publish, "IMAGES", Path("/tmp/test-images-ua")),
+        ):
+            publish.pick_source_image(sources, "test-slug", keywords="american football")
+        mock_dl.assert_called_once()
+        _, kwargs = mock_dl.call_args
+        self.assertEqual(kwargs.get("user_agent"), publish.BROWSER_USER_AGENT)
+
+    def test_og_download_uses_bot_ua(self):
+        sources = [{"url": "https://example.com/a", "image_url": "https://example.com/og.jpg", "publisher": "Pub"}]
+        with (
+            patch.object(publish, "download_image", return_value=(b"x" * 5000, ".jpg")) as mock_dl,
+            patch.object(publish, "IMAGES", Path("/tmp/test-images-ua2")),
+        ):
+            publish.pick_source_image(sources, "test-slug", keywords="american football")
+        _, kwargs = mock_dl.call_args
+        self.assertEqual(kwargs.get("user_agent", publish.USER_AGENT), publish.USER_AGENT)
 
     def test_single_word_fallback_skips_pure_numbers(self):
         tried = []
