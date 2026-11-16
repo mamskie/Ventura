@@ -97,10 +97,19 @@ class ChunkedGenerationTests(unittest.TestCase):
 
     def test_whole_article_validation_rejects_short_total(self):
         # Each part passes the per-part minimum (250) but the total is
-        # under 1000 words, so the combined article must be rejected.
-        with patch.object(publish, "gemini_generate", side_effect=self.fake_gemini(440, 260, 260)):
+        # under 900 words, so the combined article must be rejected.
+        with patch.object(publish, "gemini_generate", side_effect=self.fake_gemini(300, 280, 260)):
             article = publish.call_gemini("Test Topic", self.sources)
         self.assertIsNone(article)
+
+    def test_whole_article_validation_accepts_just_above_900(self):
+        # Mirrors run #58: parts total ~970 words (13 paragraphs,
+        # starts with title). The old 1000-word floor rejected it;
+        # the 900-word floor accepts it.
+        with patch.object(publish, "gemini_generate", side_effect=self.fake_gemini(330, 320, 310)):
+            article = publish.call_gemini("Test Topic", self.sources)
+        self.assertIsNotNone(article)
+        self.assertGreaterEqual(len(article.split()), 900)
 
     def test_part1_must_start_with_title(self):
         def _generate(prompt):
