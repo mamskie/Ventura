@@ -272,9 +272,9 @@ def pick_source_image(sources: list[dict], slug: str, keywords: str = "") -> dic
         return {"rel": rel, "credit": source.get("publisher") or source.get("title") or "Source"}
     words = openverse_keywords(keywords)
     tried = set()
-    for length in range(len(words), 1, -1):
+    for length in range(len(words), 0, -1):
         query = " ".join(words[:length])
-        if query in tried:
+        if query in tried or query.isdigit():
             continue
         tried.add(query)
         for candidate in search_openverse_image(query):

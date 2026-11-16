@@ -210,6 +210,25 @@ class OpenverseTests(unittest.TestCase):
         )
         self.assertEqual(image["credit"], "Ann via Openverse")
 
+    def test_single_word_fallback_skips_pure_numbers(self):
+        tried = []
+
+        def _search(query):
+            tried.append(query)
+            if query == "nfl":
+                return [{"url": "https://example.com/img.jpg", "creator": "Ann"}]
+            return []
+
+        sources = [{"url": "https://example.com/a"}]
+        with (
+            patch.object(publish, "search_openverse_image", side_effect=_search),
+            patch.object(publish, "download_image", return_value=(b"x" * 5000, ".jpg")),
+            patch.object(publish, "IMAGES", Path("/tmp/test-images-single")),
+        ):
+            image = publish.pick_source_image(sources, "test-slug", keywords="NFL Week 10 Slate")
+        self.assertEqual(tried, ["nfl 10 slate", "nfl 10", "nfl"])
+        self.assertIsNotNone(image)
+
 
 class TopicModeTests(unittest.TestCase):
     def test_search_news_parses_rss(self):
